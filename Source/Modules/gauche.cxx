@@ -21,7 +21,7 @@ public:
     Preprocessor_define("SWIGGAUCHE 1", 0);
 
     /* Set language-specific configuration file */
-    // SWIG_config_file("gauche.swg");
+    SWIG_config_file("gauche.swg");
 
     /* Set typemap language (historical) */
     SWIG_typemap_lang("gauche");
@@ -29,7 +29,8 @@ public:
   }
 
   virtual int top(Node *n);
-
+  virtual int functionWrapper(Node *n);
+  
 };
 
 extern "C" Language *
@@ -82,6 +83,49 @@ int GAUCHE::top(Node *n) {
   Delete(f_wrappers);
   Delete(f_init);
   Delete(f_begin);
+
+  return SWIG_OK;
+}
+
+int GAUCHE::functionWrapper(Node *n) {
+  /* Get some useful attributes of this function */
+  String   *name   = Getattr(n, "sym:name");
+  SwigType *type   = Getattr(n, "type");
+  ParmList *parms  = Getattr(n, "parms");
+  String   *parmstr= ParmList_str_defaultargs(parms); // to string
+  String   *func   = SwigType_str(type, NewStringf("%s(%s)", name, parmstr));
+  String   *action = Getattr(n, "wrap:action");
+  String   *tm;
+
+  // Printf(f_wrappers, "functionWrapper   : %s\n", func);
+  // Printf(f_wrappers, "           action : %s\n", action);
+
+  Wrapper *wrapper = NewWrapper();
+  String *wname = Swig_name_wrapper(name);
+
+  emit_parameter_variables(parms, wrapper);
+  emit_return_variable(n, type, wrapper);
+
+  Printv(wrapper->def, "ScmObj ", wname, "(ScmObj *args, int argc, void *data) {", NIL);
+
+  if ((tm = Swig_typemap_lookup_out("out", n, Swig_cresult_name(), wrapper, action))) {
+    Replaceall(tm, "$source", Swig_cresult_name());
+    if (GetFlag(n, "feature:new")) {
+      Replaceall(tm, "$owner", "1");
+    } else {
+      Replaceall(tm, "$owner", "0");
+    }
+    Printf(wrapper->code, "\nreturn %s\n", tm, NIL);
+  } else {
+    Printf(wrapper->code, "return SCM_NIL\n", NIL);
+  }
+
+  Printv(wrapper->code, "}", NIL);
+
+  Wrapper_print(wrapper, f_wrappers);
+
+  Delete(wname);
+  DelWrapper(wrapper);
 
   return SWIG_OK;
 }
