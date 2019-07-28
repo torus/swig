@@ -9,6 +9,8 @@ protected:
   File *f_wrappers;
   File *f_init;
 
+  String *proxy_class_name;
+
 public:
 
   virtual void main(int argc, char *argv[]) {
@@ -30,13 +32,10 @@ public:
 
   virtual int top(Node *n);
   virtual int functionWrapper(Node *n);
-  
+  virtual int classHandler(Node *n);
+
 };
 
-extern "C" Language *
-swig_gauche(void) {
-  return new GAUCHE();
-}
 
 int GAUCHE::top(Node *n) {
   printf("Generating code.\n");
@@ -68,8 +67,12 @@ int GAUCHE::top(Node *n) {
   /* Output module initialization code */
   Swig_banner(f_begin);
 
+  Printv(f_init, "void SWIG_init() {\n", NIL);
+
   /* Emit code for children */
   Language::top(n);
+
+  Printv(f_init, "}\n", NIL);
 
   /* Write all to the file */
   Dump(f_runtime, f_begin);
@@ -129,6 +132,28 @@ int GAUCHE::functionWrapper(Node *n) {
 
   return SWIG_OK;
 }
+
+/* ------------------------------------------------------------
+ * classHandler()
+ * ------------------------------------------------------------ */
+
+int GAUCHE::classHandler(Node *n) {
+  proxy_class_name = Getattr(n, "sym:name");
+  Printv(f_wrappers, "// class ", proxy_class_name, "\n", NIL);
+
+  Printv(f_init, "gauche_register_class ", proxy_class_name, ";\n", NIL);
+
+  Language::classHandler(n);
+
+
+  return SWIG_OK;
+}
+
+extern "C" Language *
+swig_gauche(void) {
+  return new GAUCHE();
+}
+
 
 // Local Variables:
 // mode: c++
